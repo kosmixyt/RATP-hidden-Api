@@ -3,3 +3,4 @@ urllib3
 curl_cffi
 bs4
 json
+flask

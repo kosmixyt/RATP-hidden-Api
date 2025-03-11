@@ -2,16 +2,43 @@ import requests
 from urllib.parse import quote
 import time
 import os
+import traceback
+from flask import Flask, request, jsonify
 from curl_cffi import requests
 import json
 from bs4 import BeautifulSoup
-
-
-token = "cocasse"
-base_url = f"http://host.docker.internal:3000/req?token={token}&url="
+import tkinter as tk
+from tkinter import ttk, messagebox
 
 cf = None
 
+base_url = os.getenv("BASE_API")
+if base_url is None:
+    raise Exception("BASE_API environment variable is not set")
+
+def get_cloudflare(url: str) -> dict:
+    url = f"{base_url}{quote(url)}"
+    res = requests.get(url, headers={"Authorization": "cocasse"})
+    return res.json()
+
+def get_header_and_cookies(cf) -> (dict, dict):
+    headers = {
+        "User-Agent": cf["User-Agent"],
+    }
+    cookies = {
+    }
+    for cookie in cf["cookies"]:
+        cookies[cookie["name"]] = cookie["value"]
+    return headers, cookies
+
+def get_ligne(ligne: int) -> "Ligne":
+    from main import Ligne  # Import Ligne from main
+    headers, cookies = get_header_and_cookies(cf)
+    res = requests.get(f"https://www.ratp.fr/horaires/api/getLinesAutoComplete/busnoctilien/{ligne}?to=fo&cache=true", headers=headers, cookies=cookies, impersonate="chrome110")
+    json = res.json()
+    if len(json) != 1:
+        raise Exception(f"Ligne not found {len(json)}")
+    return Ligne(json[0]["name"], json[0]["id"], json[0]["pictoV2"], json[0]["pngPlan"], int(json[0]["code"]))
 
 class Arret:
     def __init__(self, status: int, name: int, ligne: "Ligne", id: str):  # Use forward reference for type hint
@@ -82,6 +109,13 @@ class Ligne:
             alls.append(Arret(arret["status"], arret["name"], self, arret["stop_place_id"]))
         self.arrets = alls
         return alls
+    def get_arretById(self, id: str) -> Arret:
+        if len(self.arrets) == 0:
+            self.get_arrets()
+        for arret in self.arrets:
+            if arret.id == id:
+                return arret
+        return None
     def get_arretByName(self, name: str) -> Arret:
         if len(self.arrets) == 0:
             self.get_arrets()
@@ -94,21 +128,6 @@ class Ligne:
     
 
 
-
-def get_cloudflare(url: str) -> dict:
-    url = f"{base_url}{quote(url)}"
-    res = requests.get(url, headers={"Authorization": "cocasse"})
-    return res.json()
-
-def get_header_and_cookies(cf) -> (dict, dict):
-    headers = {
-        "User-Agent": cf["User-Agent"],
-    }
-    cookies = {
-    }
-    for cookie in cf["cookies"]:
-        cookies[cookie["name"]] = cookie["value"]
-    return headers, cookies
 
 
 def get_perturbation(busLine: int, cf) -> str:
@@ -138,15 +157,40 @@ def get_ligne(ligne: int) -> Ligne:
 
 
 
+if __name__ == "__main__":
+    app = Flask(__name__)
+    
+    @app.route('/bus', methods=['GET'])
+    def bus_info():
+        try:
+            bus_num = int(request.args.get('id'))
+            global cf
+            cf = get_cloudflare(f"https://www.ratp.fr/horaires/api/getTrafficEventsLive/busratp/{bus_num}")
+            ligne = get_ligne(bus_num)
+            arrets = ligne.get_arrets()
+            arrets_info = [{"status": arret.status, "name": arret.name, "id": arret.id} for arret in arrets]
+            return jsonify({"nom": ligne.nom, "arrets": arrets_info})
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
 
-start = time.time()
-ligne = 258
-cf = get_cloudflare(f"https://www.ratp.fr/horaires/api/getTrafficEventsLive/busratp/{ligne}")
-ln = get_ligne(ligne)
-print(ln.nom)
-print(ln.get_arrets())
-arret = (ln.get_arretByName("La Défense-Métro-RER-Tramway"))
-if arret is None:
-    raise Exception("Arret not found")
-text = arret.get_horaire("2025-02-17", "15:20")
-print(text)
+    @app.route('/arret', methods=['GET'])
+    def arret_info():
+        try:
+            arret_id = request.args.get('id')
+            bus_num = int(request.args.get('bus'))
+            date = request.args.get('date')
+            heure = request.args.get('heure')
+            global cf
+            cf = get_cloudflare(f"https://www.ratp.fr/horaires/api/getTrafficEventsLive/busratp/{bus_num}")
+            ligne = get_ligne(bus_num)
+            arret = ligne.get_arretById(arret_id)
+            if arret is None:
+                raise Exception("Arrêt non trouvé.")
+            horaires = arret.get_horaire(date, heure)
+            return jsonify(horaires)
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
+    app.run(debug=False, )

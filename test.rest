@@ -1,0 +1,9 @@
+
+
+# variable
+@host = 127.0.0.1:5000
+@bus_id = 158
+
+
+GET http://{{host}}/bus?id={{bus_id}}
+```
