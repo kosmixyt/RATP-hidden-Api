@@ -12,13 +12,15 @@ from tkinter import ttk, messagebox
 
 cf = None
 
-base_url = os.getenv("BASE_API")
-if base_url is None:
+base_url = os.getenv("BASE_API") + "&url="
+if len(base_url) == 0:
     raise Exception("BASE_API environment variable is not set")
 
+print(base_url)
 def get_cloudflare(url: str) -> dict:
     url = f"{base_url}{quote(url)}"
-    res = requests.get(url, headers={"Authorization": "cocasse"})
+    print(url, "get_cloudflare")
+    res = requests.get(url)
     return res.json()
 
 def get_header_and_cookies(cf) -> (dict, dict):
@@ -193,4 +195,4 @@ if __name__ == "__main__":
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
 
-    app.run(debug=False, )
+    app.run(debug=True, host='0.0.0.0', port=5000)
