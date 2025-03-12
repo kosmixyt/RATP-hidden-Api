@@ -183,6 +183,13 @@ if __name__ == "__main__":
             bus_num = request.args.get('bus')
             date = request.args.get('date')
             heure = request.args.get('heure')
+            if date is None:
+                # format = yyyy-mm-dd
+                date = time.strftime("%Y-%m-%d")
+            if heure is None:
+                # format = hh:mm
+                heure = time.strftime("%H:%M")
+
             global cf
             cf = get_cloudflare(f"https://www.ratp.fr/horaires/api/getTrafficEventsLive/busratp/{bus_num}")
             ligne = get_ligne(bus_num)
