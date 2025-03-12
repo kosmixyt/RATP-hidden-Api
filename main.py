@@ -180,7 +180,7 @@ if __name__ == "__main__":
     def arret_info():
         try:
             arret_id = request.args.get('id')
-            bus_num = int(request.args.get('bus'))
+            bus_num = request.args.get('bus')
             date = request.args.get('date')
             heure = request.args.get('heure')
             global cf
